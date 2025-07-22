@@ -197,11 +197,8 @@ async function handleFinalizeOrder(session, twimlResponse) {
         twimlResponse.message('No has añadido ningún producto a tu pedido. Escribe *HOLA* si quieres empezar uno nuevo. ¡Hasta pronto!');
         return;
     }
-       console.log
     // Guardar el pedido en AppSheet
-console.log('Enviando este objeto completo a AppSheet:', JSON.stringify(session.order, null, 2));
-const success = await appsheet.saveOrder(session.order);
-    //const success = await appsheet.saveOrder(session.order);
+    const success = await appsheet.saveOrder(session.order);
 
     if (!success) {
         twimlResponse.message('Hubo un problema al registrar tu pedido. Por favor, inténtalo de nuevo en unos minutos.');
