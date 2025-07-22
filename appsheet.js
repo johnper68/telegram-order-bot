@@ -66,7 +66,7 @@ async function saveOrder(orderData) {
                 "enc_total": orderData.total,
                 "fecha": orderData.fecha,
                 "cliente": orderData.cliente,
-                "dirección": orderData.direccion,
+                "direccion": orderData.direccion,
                 "celular": orderData.celular
             }
         ]
