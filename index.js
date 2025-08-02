@@ -33,7 +33,7 @@ app.post('/whatsapp', async (req, res) => {
     try {
         switch (session.state) {
             case 'AWAITING_START':
-                if (incomingMsg.toLowerCase() === 'hola') {
+                if (incomingMsg.toLowerCase() === 'Hola') {
                     twimlResponse.message('¡Hola! 👋 Bienvenido a nuestro servicio de pedidos. \n\nEscribe *PEDIDO* para comenzar a ordenar o *FIN* para salir.');
                     session.state = 'AWAITING_CHOICE';
                 } else {
