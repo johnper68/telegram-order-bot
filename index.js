@@ -2,7 +2,7 @@
 // Importar las librerías necesarias
 const express = require('express');
 const bodyParser = require('body-parser');
-const { v4: uuidv4 } = require('uuid'); // Para generar IDs únicos para los pedidos
+// const { v4: uuidv4 } = require('uuid'); // Ya no es necesario para el ID del pedido
 const { twiml } = require('twilio');
 const appsheet = require('./appsheet'); // Módulo para interactuar con AppSheet
 
@@ -145,7 +145,9 @@ function initializeSession() {
     return {
         state: 'AWAITING_START',
         order: {
-            pedidoid: uuidv4(), // Genera un ID único para este pedido
+            // ----- INICIO DE LA MODIFICACIÓN -----
+            pedidoid: Date.now().toString(), // Genera un ID numérico basado en el timestamp actual
+            // ----- FIN DE LA MODIFICACIÓN -----
             cliente: '',
             direccion: '',
             celular: '',
