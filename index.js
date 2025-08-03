@@ -111,14 +111,43 @@ app.post('/whatsapp', async (req, res) => {
 
                     let summary = `*Producto añadido:*\n- Nombre: ${product.nombreProducto}\n- Cantidad: ${quantity}\n- Valor Unit.: $${product.valor}\n- Valor Total: $${totalItemValue}`;
                     summary += `\n\n*Total actual del pedido: $${session.order.total}*`;
-                    summary += `\n\nEscribe el nombre de otro producto que desees añadir, o escribe *FIN* para completar tu pedido.`;
+                    
+                    // --- INICIO DE LA MODIFICACIÓN ---
+                    // Preguntar si desea añadir otra opción del mismo producto o buscar uno nuevo
+                    if (session.tempProductMatches.length > 1) {
+                         summary += '\n\n¿Deseas añadir otra de las opciones del producto que te mostré antes? \n\nEscribe *SI* para ver la lista de nuevo o *NO* para buscar un producto diferente.';
+                         session.state = 'AWAITING_QUANTITY_OR_OTHER_CHOICE';
+                    } else {
+                         summary += '\n\nEscribe el nombre de otro producto que desees añadir, o escribe *FIN* para completar tu pedido.';
+                         session.state = 'AWAITING_PRODUCT';
+                         session.tempSelectedItem = null;
+                         session.tempProductMatches = [];
+                    }
+                    // --- FIN DE LA MODIFICACIÓN ---
                     
                     twimlResponse.message(summary);
+                }
+                break;
+
+            // --- INICIO DE LA MODIFICACIÓN: Nuevo estado ---
+            case 'AWAITING_QUANTITY_OR_OTHER_CHOICE':
+                if (incomingMsg.toLowerCase() === 'si') {
+                    let message = 'Aquí está la lista de nuevo. Por favor, elige una opción respondiendo con el número correspondiente:\n\n';
+                    session.tempProductMatches.forEach((p, index) => {
+                        message += `*${index + 1}.* ${p.nombreProducto} - $${p.valor}\n`;
+                    });
+                    twimlResponse.message(message);
+                    session.state = 'AWAITING_PRODUCT_CHOICE';
+                } else if (incomingMsg.toLowerCase() === 'no') {
+                    twimlResponse.message('Entendido. Por favor, escribe el nombre de otro producto que desees añadir, o escribe *FIN* para completar tu pedido.');
                     session.state = 'AWAITING_PRODUCT';
                     session.tempSelectedItem = null;
                     session.tempProductMatches = [];
+                } else {
+                    twimlResponse.message('Opción no válida. Por favor, responde *SI* o *NO*.');
                 }
                 break;
+            // --- FIN DE LA MODIFICACIÓN ---
 
             default:
                 twimlResponse.message('Lo siento, ha ocurrido un error. Por favor, escribe *HOLA* para empezar de nuevo.');
