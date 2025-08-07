@@ -1,1 +1,8 @@
+# Carpeta de dependencias de Node.js (se instala con 'npm install')
+node_modules
+
+# Archivo de variables de entorno (contiene claves secretas)
 .env
+
+# Logs de NPM
+npm-debug.log*

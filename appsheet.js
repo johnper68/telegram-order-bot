@@ -1,126 +1,89 @@
-// appsheet.js (Modificado)
+// appsheet.js
 const axios = require('axios');
 
-// --- Configuración de AppSheet ---
 const APPSHEET_API_URL = 'https://api.appsheet.com/api/v2';
 const APP_ID = process.env.APPSHEET_APP_ID;
 const ACCESS_KEY = process.env.APPSHEET_ACCESS_KEY;
 
-// Configuración de la cabecera para las peticiones a la API
+// Verifica que las variables de entorno se carguen al iniciar
+if (!APP_ID || !ACCESS_KEY) {
+    console.error("[FATAL STARTUP ERROR] Las variables de AppSheet no están definidas. Revisa tu archivo .env o la configuración del entorno en Render.");
+}
+
 const apiHeaders = {
     'Content-Type': 'application/json',
     'ApplicationAccessKey': ACCESS_KEY
 };
 
-/**
- * Busca productos en la tabla 'Productos' de AppSheet.
- * (Esta función no ha sido modificada)
- */
-async function findProducts(searchString) {
-    const payload = {
-        "Action": "Find",
-        "Properties": {},
-        "Rows": []
-    };
+const TABLES = {
+    PRODUCTS: 'Productos',
+    ORDER_DETAILS: 'Pedido',
+    ORDER_HEADER: 'enc_pedido'
+};
 
+async function findProducts(searchString) {
+    if (!APP_ID || !ACCESS_KEY) return [];
     try {
         const response = await axios.post(
-            `${APPSHEET_API_URL}/apps/${APP_ID}/tables/Productos/Action`,
-            payload,
+            `${APPSHEET_API_URL}/apps/${APP_ID}/tables/${TABLES.PRODUCTS}/Action`,
+            { "Action": "Find", "Properties": {}, "Rows": [] },
             { headers: apiHeaders }
         );
-        
-        const allProducts = response.data;
-        const lowerCaseSearchString = searchString.toLowerCase();
-
-        const matchingProducts = allProducts.filter(product => 
-            product.nombreProducto && product.nombreProducto.toLowerCase().includes(lowerCaseSearchString)
-        );
-
-        return matchingProducts;
-
+        const lowerCaseSearch = searchString.toLowerCase();
+        return response.data.filter(p => p.nombreProducto && p.nombreProducto.toLowerCase().includes(lowerCaseSearch));
     } catch (error) {
-        console.error('Error finding products in AppSheet:', error.response ? error.response.data : error.message);
+        console.error(`[ERROR APPSHEET] Falla en findProducts. Tabla: ${TABLES.PRODUCTS}.`, error.response ? `Status ${error.response.status} - ${JSON.stringify(error.response.data)}` : error.message);
         return [];
     }
 }
 
-/**
- * Guarda un pedido completo, registrando primero los detalles y luego el encabezado.
- * @param {object} orderData - El objeto completo del pedido.
- * @returns {Promise<boolean>} - True si el pedido se guardó con éxito, de lo contrario false.
- */
 async function saveOrder(orderData) {
-    // --- MODIFICACIÓN ---
-    // Paso 1 (NUEVO): Guardar cada item del detalle del pedido en la tabla 'Pedido'.
-    const detallePedidoRows = orderData.items.map(item => ({
-        "pedidoid": orderData.pedidoid,
-        "fecha": new Date().toISOString(),
-        "nombreProducto": item.nombreProducto,
-        "cantidadProducto": item.cantidadProducto,
-        "valor_unit": item.valor_unit,
-        "valor": item.valor
-    }));
+    if (!APP_ID || !ACCESS_KEY) return false;
 
-    const detallePedidoPayload = {
-        "Action": "Add",
-        "Properties": {
-            "Locale": "es-US"
-        },
-        "Rows": detallePedidoRows
-    };
-
+    // Guardar detalles del pedido
     try {
+        const detalleRows = orderData.items.map(item => ({
+            "pedidoid": item.pedidoid,
+            "fecha": new Date().toISOString(),
+            "nombreProducto": item.nombreProducto,
+            "cantidadProducto": item.cantidadProducto,
+            "valor_unit": item.valor_unit,
+            "valor": item.valor
+        }));
         await axios.post(
-            `${APPSHEET_API_URL}/apps/${APP_ID}/tables/Pedido/Action`,
-            detallePedidoPayload,
+            `${APPSHEET_API_URL}/apps/${APP_ID}/tables/${TABLES.ORDER_DETAILS}/Action`,
+            { "Action": "Add", "Properties": {}, "Rows": detalleRows },
             { headers: apiHeaders }
         );
-        console.log(`Detalles del pedido ${orderData.pedidoid} guardados exitosamente.`);
+        console.log(`[LOG APPSHEET] Detalles del pedido ${orderData.pedidoid} guardados.`);
     } catch (error) {
-        console.error('Error al guardar los detalles del pedido en AppSheet:', error.response ? error.response.data : error.message);
-        return false; // Si fallan los detalles, no continuamos.
-    }
-
-    // Paso 2 (NUEVO): Guardar el encabezado del pedido en la tabla 'enc_pedido'.
-    const encPedidoPayload = {
-        "Action": "Add",
-        "Properties": {
-            "Locale": "es-US"
-        },
-        "Rows": [
-            {
-                "pedidoid": orderData.pedidoid,
-                "enc_total": orderData.total,
-                "fecha": orderData.fecha,
-                "cliente": orderData.cliente,
-                "direccion": orderData.direccion,
-                "celular": orderData.celular
-            }
-        ]
-    };
-
-    try {
-        await axios.post(
-            `${APPSHEET_API_URL}/apps/${APP_ID}/tables/enc_pedido/Action`,
-            encPedidoPayload,
-            { headers: apiHeaders }
-        );
-        console.log(`Encabezado del pedido ${orderData.pedidoid} guardado exitosamente.`);
-    } catch (error) {
-        console.error('Error al guardar el encabezado del pedido en AppSheet:', error.response ? error.response.data : error.message);
-        // Nota: En este punto, los detalles ya fueron guardados en AppSheet.
-        // Se podría implementar lógica adicional para borrarlos si el encabezado falla.
+        console.error(`[ERROR APPSHEET] Falla al guardar detalles. Tabla: ${TABLES.ORDER_DETAILS}.`, error.response ? `Status ${error.response.status} - ${JSON.stringify(error.response.data)}` : error.message);
         return false;
     }
 
-    console.log(`✅ Pedido ${orderData.pedidoid} completado y guardado exitosamente.`);
+    // Guardar encabezado del pedido
+    try {
+        const encabezadoRow = [{
+            "pedidoid": orderData.pedidoid,
+            "enc_total": orderData.total,
+            "fecha": orderData.fecha,
+            "cliente": orderData.cliente,
+            "direccion": orderData.direccion,
+            "celular": orderData.celular
+        }];
+        await axios.post(
+            `${APPSHEET_API_URL}/apps/${APP_ID}/tables/${TABLES.ORDER_HEADER}/Action`,
+            { "Action": "Add", "Properties": {}, "Rows": encabezadoRow },
+            { headers: apiHeaders }
+        );
+        console.log(`[LOG APPSHEET] Encabezado del pedido ${orderData.pedidoid} guardado.`);
+    } catch (error) {
+        console.error(`[ERROR APPSHEET] Falla al guardar encabezado. Tabla: ${TABLES.ORDER_HEADER}.`, error.response ? `Status ${error.response.status} - ${JSON.stringify(error.response.data)}` : error.message);
+        return false;
+    }
+    
+    console.log(`[LOG APPSHEET] ✅ Pedido ${orderData.pedidoid} guardado exitosamente.`);
     return true;
 }
 
-module.exports = {
-    findProducts,
-    saveOrder
-};
-
-
+module.exports = { findProducts, saveOrder };

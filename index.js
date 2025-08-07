@@ -1,35 +1,38 @@
+¡Por supuesto! Aquí tienes los archivos completos y mejorados. La idea es que reemplaces todo el contenido de tus archivos actuales con estos. Esto nos dará una base de código limpia, robusta y con mejores herramientas de diagnóstico.
+
+### Archivo 1: index.js (Versión Completa y Robusta)
+Mejoras: Se han añadido console.log en puntos clave para que puedas ver exactamente qué está pasando en cada paso de la conversación en tus logs de Render.
+
+JavaScript
+
 // index.js
-// Importar las librerías necesarias
+require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
-// const { v4: uuidv4 } = require('uuid'); // Ya no es necesario para el ID del pedido
 const { twiml } = require('twilio');
-const appsheet = require('./appsheet'); // Módulo para interactuar con AppSheet
+const appsheet = require('./appsheet');
 
-// --- Configuración Inicial ---
 const app = express();
 app.use(bodyParser.urlencoded({ extended: false }));
 
-// Objeto para mantener el estado de la conversación de cada usuario.
-// En un entorno de producción, es recomendable usar una base de datos como Redis para persistencia.
 const userSessions = {};
 
-// --- Lógica Principal del Webhook ---
 app.post('/whatsapp', async (req, res) => {
     const { MessagingResponse } = twiml;
     const twimlResponse = new MessagingResponse();
     
     const incomingMsg = req.body.Body.trim();
-    const from = req.body.From; // Número del usuario en formato whatsapp:+54...
+    const from = req.body.From;
 
-    // Obtener o inicializar la sesión del usuario
     let session = userSessions[from];
     if (!session) {
-        session = initializeSession();
+        session = initializeSession(from);
         userSessions[from] = session;
     }
 
-    // --- Máquina de Estados para el Flujo de Conversación ---
+    // Log principal para rastrear la conversación
+    console.log(`[CONVO LOG] User: ${from} | Message: "${incomingMsg}" | State: ${session.state}`);
+
     try {
         switch (session.state) {
             case 'AWAITING_START':
@@ -47,13 +50,12 @@ app.post('/whatsapp', async (req, res) => {
                     session.state = 'AWAITING_NAME';
                 } else if (incomingMsg.toLowerCase() === 'fin') {
                     twimlResponse.message('Entendido. ¡Hasta la próxima!');
-                    delete userSessions[from]; // Limpiar sesión
+                    delete userSessions[from];
                 } else {
                     twimlResponse.message('Opción no válida. Escribe *PEDIDO* para ordenar o *FIN* para salir.');
                 }
                 break;
 
-            // Recolección de datos del cliente
             case 'AWAITING_NAME':
                 session.order.cliente = incomingMsg;
                 twimlResponse.message('Gracias. Ahora, por favor, indícame tu *dirección de entrega*.');
@@ -72,11 +74,10 @@ app.post('/whatsapp', async (req, res) => {
                 session.state = 'AWAITING_PRODUCT';
                 break;
 
-            // Lógica de búsqueda y adición de productos
             case 'AWAITING_PRODUCT':
                 if (incomingMsg.toLowerCase() === 'fin') {
                     await handleFinalizeOrder(session, twimlResponse);
-                    delete userSessions[from]; // Finalizar y limpiar sesión
+                    delete userSessions[from];
                 } else {
                     await handleProductSearch(incomingMsg, session, twimlResponse);
                 }
@@ -102,6 +103,7 @@ app.post('/whatsapp', async (req, res) => {
                     const totalItemValue = product.valor * quantity;
                     
                     session.order.items.push({
+                        "pedidoid": session.order.pedidoid, // Añadir pedidoid a cada item
                         nombreProducto: product.nombreProducto,
                         cantidadProducto: quantity,
                         valor_unit: product.valor,
@@ -109,37 +111,32 @@ app.post('/whatsapp', async (req, res) => {
                     });
                     session.order.total += totalItemValue;
 
-                    let summary = `*Producto añadido:*\n- Nombre: ${product.nombreProducto}\n- Cantidad: ${quantity}\n- Valor Unit.: $${product.valor}\n- Valor Total: $${totalItemValue}`;
+                    let summary = `*Producto añadido:*\n- Nombre: ${product.nombreProducto}\n- Cantidad: ${quantity}\n- Valor Total: $${totalItemValue}`;
                     summary += `\n\n*Total actual del pedido: $${session.order.total}*`;
                     
-                    // --- INICIO DE LA MODIFICACIÓN ---
-                    // Preguntar si desea añadir otra opción del mismo producto o buscar uno nuevo
                     if (session.tempProductMatches.length > 1) {
-                         summary += '\n\n¿Deseas añadir otra de las opciones del producto que te mostré antes? \n\nEscribe *SI* para ver la lista de nuevo o *NO* para buscar un producto diferente.';
+                         summary += '\n\n¿Deseas añadir otra de las opciones que te mostré? Responde *SI* para ver la lista de nuevo o *NO* para buscar un producto diferente.';
                          session.state = 'AWAITING_QUANTITY_OR_OTHER_CHOICE';
                     } else {
-                         summary += '\n\nEscribe el nombre de otro producto que desees añadir, o escribe *FIN* para completar tu pedido.';
+                         summary += '\n\nEscribe el nombre de otro producto o escribe *FIN* para completar tu pedido.';
                          session.state = 'AWAITING_PRODUCT';
                          session.tempSelectedItem = null;
                          session.tempProductMatches = [];
                     }
-                    // --- FIN DE LA MODIFICACIÓN ---
-                    
                     twimlResponse.message(summary);
                 }
                 break;
 
-            // --- INICIO DE LA MODIFICACIÓN: Nuevo estado ---
             case 'AWAITING_QUANTITY_OR_OTHER_CHOICE':
                 if (incomingMsg.toLowerCase() === 'si') {
-                    let message = 'Aquí está la lista de nuevo. Por favor, elige una opción respondiendo con el número correspondiente:\n\n';
+                    let message = 'Aquí está la lista de nuevo. Por favor, elige una opción:\n\n';
                     session.tempProductMatches.forEach((p, index) => {
                         message += `*${index + 1}.* ${p.nombreProducto} - $${p.valor}\n`;
                     });
                     twimlResponse.message(message);
                     session.state = 'AWAITING_PRODUCT_CHOICE';
                 } else if (incomingMsg.toLowerCase() === 'no') {
-                    twimlResponse.message('Entendido. Por favor, escribe el nombre de otro producto que desees añadir, o escribe *FIN* para completar tu pedido.');
+                    twimlResponse.message('Entendido. Escribe el nombre de otro producto o escribe *FIN* para completar tu pedido.');
                     session.state = 'AWAITING_PRODUCT';
                     session.tempSelectedItem = null;
                     session.tempProductMatches = [];
@@ -147,59 +144,44 @@ app.post('/whatsapp', async (req, res) => {
                     twimlResponse.message('Opción no válida. Por favor, responde *SI* o *NO*.');
                 }
                 break;
-            // --- FIN DE LA MODIFICACIÓN ---
 
             default:
-                twimlResponse.message('Lo siento, ha ocurrido un error. Por favor, escribe *HOLA* para empezar de nuevo.');
+                twimlResponse.message('Lo siento, no entendí. Escribe *HOLA* para empezar de nuevo.');
                 delete userSessions[from];
                 break;
         }
     } catch (error) {
-        console.error('Error in webhook:', error);
-        twimlResponse.message('Lo siento, no pude procesar tu solicitud en este momento. Inténtalo de nuevo más tarde.');
-        // Opcional: podrías querer resetear la sesión aquí también
-        // delete userSessions[from];
+        console.error('[FATAL ERROR] Error en el webhook:', error);
+        twimlResponse.message('Lo siento, ocurrió un error inesperado. Inténtalo de nuevo.');
     }
     
-    // Enviar la respuesta a Twilio
     res.type('text/xml').send(twimlResponse.toString());
 });
 
-// --- Funciones Auxiliares ---
-
-/**
- * Inicializa una nueva sesión de usuario.
- */
-function initializeSession() {
+function initializeSession(from) {
+    console.log(`[SESSION] Inicializando nueva sesión para ${from}`);
     return {
         state: 'AWAITING_START',
         order: {
-            // ----- INICIO DE LA MODIFICACIÓN -----
-            pedidoid: Date.now().toString(), // Genera un ID numérico basado en el timestamp actual
-            // ----- FIN DE LA MODIFICACIÓN -----
+            pedidoid: Date.now().toString(),
             cliente: '',
             direccion: '',
             celular: '',
             items: [],
             total: 0,
-            fecha: new Date().toISOString().split('T')[0] // Fecha en formato YYYY-MM-DD
+            fecha: new Date().toISOString().split('T')[0]
         },
         tempProductMatches: [],
         tempSelectedItem: null
     };
 }
 
-/**
- * Maneja la búsqueda de productos en AppSheet.
- * @param {string} productName - El nombre del producto a buscar.
- * @param {object} session - La sesión del usuario.
- * @param {object} twimlResponse - El objeto de respuesta de Twilio.
- */
 async function handleProductSearch(productName, session, twimlResponse) {
+    console.log(`[APPSHEET CALL] Buscando productos para: "${productName}"`);
     const products = await appsheet.findProducts(productName);
     
     if (!products || products.length === 0) {
-        twimlResponse.message(`No encontré productos que coincidan con "*${productName}*". Por favor, intenta con otro nombre o revisa la ortografía.`);
+        twimlResponse.message(`No encontré productos que coincidan con "*${productName}*". Intenta con otro nombre.`);
         return;
     }
 
@@ -209,7 +191,7 @@ async function handleProductSearch(productName, session, twimlResponse) {
         session.state = 'AWAITING_QUANTITY';
     } else {
         session.tempProductMatches = products;
-        let message = 'Encontré varias coincidencias. Por favor, elige una de la lista respondiendo con el número correspondiente:\n\n';
+        let message = 'Encontré varias coincidencias. Elige un número de la lista:\n\n';
         products.forEach((p, index) => {
             message += `*${index + 1}.* ${p.nombreProducto} - $${p.valor}\n`;
         });
@@ -218,45 +200,30 @@ async function handleProductSearch(productName, session, twimlResponse) {
     }
 }
 
-/**
- * Finaliza el pedido, lo guarda en AppSheet y envía el resumen final.
- * @param {object} session - La sesión del usuario.
- * @param {object} twimlResponse - El objeto de respuesta de Twilio.
- */
 async function handleFinalizeOrder(session, twimlResponse) {
     if (session.order.items.length === 0) {
-        twimlResponse.message('No has añadido ningún producto a tu pedido. Escribe *HOLA* si quieres empezar uno nuevo. ¡Hasta pronto!');
+        twimlResponse.message('No has añadido ningún producto. Escribe *HOLA* para empezar. ¡Hasta pronto!');
         return;
     }
-    // Guardar el pedido en AppSheet
+    console.log(`[APPSHEET CALL] Guardando pedido: ${session.order.pedidoid}`);
     const success = await appsheet.saveOrder(session.order);
 
     if (!success) {
-        twimlResponse.message('Hubo un problema al registrar tu pedido. Por favor, inténtalo de nuevo en unos minutos.');
+        twimlResponse.message('Hubo un problema al registrar tu pedido. Por favor, contacta a soporte.');
         return;
     }
 
-    // Construir el resumen final
-    let finalSummary = '*¡Pedido registrado con éxito!* 🎉\n\n';
-    finalSummary += '*Resumen de tu pedido:*\n\n';
-    finalSummary += `*Datos del Cliente:*\n`;
-    finalSummary += `- Nombre: ${session.order.cliente}\n`;
-    finalSummary += `- Dirección: ${session.order.direccion}\n`;
-    finalSummary += `- Celular: ${session.order.celular}\n\n`;
-
+    let finalSummary = `*¡Pedido registrado con éxito!* 🎉\n\n*Resumen:*\n- Cliente: ${session.order.cliente}\n- Dirección: ${session.order.direccion}\n`;
     finalSummary += `*Productos:*\n`;
     session.order.items.forEach(item => {
-        finalSummary += `- ${item.nombreProducto} (x${item.cantidadProducto}) - *$${item.valor}*\n`;
+        finalSummary += `- ${item.nombreProducto} (x${item.cantidadProducto})\n`;
     });
-
-    finalSummary += `\n*TOTAL DEL PEDIDO: $${session.order.total}*\n\n`;
-    finalSummary += 'Gracias por tu compra. ¡Pronto nos pondremos en contacto contigo!';
+    finalSummary += `\n*TOTAL: $${session.order.total}*\n\nGracias por tu compra.`;
     
     twimlResponse.message(finalSummary);
 }
 
-// --- Iniciar el Servidor ---
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Server listening on port ${PORT}`);
+    console.log(`Servidor escuchando en el puerto ${PORT}`);
 });
