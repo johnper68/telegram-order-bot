@@ -39,12 +39,15 @@ async function findFaqAnswer(userQuestion) {
         const allFaqs = response.data;
 
         // Palabras comunes en español a ignorar para una mejor búsqueda.
-        const stopWords = new Set(['a', 'ante', 'bajo', 'con', 'contra', 'de', 'desde', 'en', 'entre', 'hacia', 'hasta', 'para', 'por', 'segun', 'sin', 'sobre', 'tras', 'y', 'o', 'u', 'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'es', 'son', 'que', 'cual', 'cuales', 'donde', 'como', 'cuando', 'quien', 'mi', 'mis', 'su', 'sus', 'q', 'k', 'd']);
+        const stopWords = new Set(['a', 'ante', 'bajo', 'con', 'contra', 'de', 'desde', 'en', 'entre', 'hacia', 'hasta', 'para', 'por', 'segun', 'sin', 'sobre', 'tras', 'y', 'o', 'u', 'el', 'la', 'los', 'las', 'un', 'una', 'unos', 'unas', 'es', 'son', 'que', 'cual', 'cuales', 'donde', 'como', 'cuando', 'quien', 'mi', 'mis', 'su', 'sus', 'q', 'k', 'd', 'me', 'le', 'les', 'se']);
 
         // Procesa las palabras clave de la pregunta del usuario.
         const userWords = userQuestion.toLowerCase().split(' ').filter(word => !stopWords.has(word) && word.length > 2);
 
-        if (userWords.length === 0) return null; // No hay suficientes palabras clave para buscar.
+        if (userWords.length === 0) {
+            console.log(`[LOG APPSHEET] No hay suficientes palabras clave en "${userQuestion}" para buscar.`);
+            return null;
+        }
 
         let bestMatch = null;
         let maxScore = 0;
@@ -103,7 +106,6 @@ async function findProducts(searchString) {
 
 async function saveOrder(orderData) {
     if (!APP_ID || !ACCESS_KEY) return false;
-    // ... (resto de la función sin cambios)
     try {
         const detalleRows = orderData.items.map(item => ({"pedidoid": item.pedidoid, "fecha": new Date().toISOString(), "nombreProducto": item.nombreProducto, "cantidadProducto": item.cantidadProducto, "valor_unit": item.valor_unit, "valor": item.valor}));
         await axios.post(`${APPSHEET_API_URL}/apps/${APP_ID}/tables/${TABLES.ORDER_DETAILS}/Action`, { "Action": "Add", "Properties": {}, "Rows": detalleRows }, { headers: apiHeaders });
