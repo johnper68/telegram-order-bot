@@ -1,13 +1,14 @@
 // appsheet.js
 const axios = require('axios');
 
+// --- Configuración de AppSheet ---
 const APPSHEET_API_URL = 'https://api.appsheet.com/api/v2';
 const APP_ID = process.env.APPSHEET_APP_ID;
 const ACCESS_KEY = process.env.APPSHEET_ACCESS_KEY;
 
-// Verifica que las variables de entorno se carguen al iniciar
+// Verifica que las variables de entorno cruciales estén cargadas.
 if (!APP_ID || !ACCESS_KEY) {
-    console.error("[FATAL STARTUP ERROR] Las variables de AppSheet no están definidas. Revisa tu archivo .env o la configuración del entorno en Render.");
+    console.error("[FATAL STARTUP ERROR] Las variables de AppSheet (APP_ID o ACCESS_KEY) no están definidas. Revisa tu archivo .env o la configuración del entorno en producción.");
 }
 
 const apiHeaders = {
@@ -18,8 +19,45 @@ const apiHeaders = {
 const TABLES = {
     PRODUCTS: 'Productos',
     ORDER_DETAILS: 'Pedido',
-    ORDER_HEADER: 'enc_pedido'
+    ORDER_HEADER: 'enc_pedido',
+    FAQS: 'Precfrec' // Nueva tabla de preguntas frecuentes
 };
+
+/**
+ * NUEVA FUNCIÓN: Busca una respuesta en la tabla de preguntas frecuentes.
+ * @param {string} userQuestion - La pregunta textual del usuario.
+ * @returns {Promise<string|null>} La respuesta encontrada o null si no hay coincidencia.
+ */
+async function findFaqAnswer(userQuestion) {
+    if (!APP_ID || !ACCESS_KEY) return null;
+    try {
+        const response = await axios.post(
+            `${APPSHEET_API_URL}/apps/${APP_ID}/tables/${TABLES.FAQS}/Action`,
+            { "Action": "Find", "Properties": {}, "Rows": [] },
+            { headers: apiHeaders }
+        );
+        
+        const lowerCaseQuestion = userQuestion.toLowerCase();
+        // Busca una fila donde el campo 'pregunta' (en minúsculas) incluya el texto del usuario.
+        const foundFaq = response.data.find(faq => 
+            faq.pregunta && faq.pregunta.toLowerCase().includes(lowerCaseQuestion)
+        );
+
+        if (foundFaq && foundFaq.respuesta) {
+            console.log(`[LOG APPSHEET] Respuesta encontrada para: "${userQuestion}"`);
+            return foundFaq.respuesta;
+        } else {
+            console.log(`[LOG APPSHEET] No se encontró respuesta para: "${userQuestion}"`);
+            return null;
+        }
+    } catch (error) {
+        console.error(`[ERROR APPSHEET] Falla en findFaqAnswer. Tabla: ${TABLES.FAQS}.`, error.response ? `Status ${error.response.status} - ${JSON.stringify(error.response.data)}` : error.message);
+        return null; // Devuelve null en caso de error para que el bot pueda manejarlo.
+    }
+}
+
+
+// --- FUNCIONES EXISTENTES (SIN CAMBIOS) ---
 
 async function findProducts(searchString) {
     if (!APP_ID || !ACCESS_KEY) return [];
@@ -85,5 +123,6 @@ async function saveOrder(orderData) {
     console.log(`[LOG APPSHEET] ✅ Pedido ${orderData.pedidoid} guardado exitosamente.`);
     return true;
 }
-//para probar
-module.exports = { findProducts, saveOrder };
+
+// Exporta la nueva función junto con las existentes.
+module.exports = { findProducts, saveOrder, findFaqAnswer };
