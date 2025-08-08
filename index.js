@@ -1,4 +1,4 @@
-// index.js (Corregido para restaurar la funcionalidad de pedidos)
+// index.js (Restaurado a la funcionalidad de Pedidos y Asesor)
 
 require('dotenv').config();
 const express = require('express');
@@ -28,7 +28,6 @@ app.post('/whatsapp', async (req, res) => {
     console.log(`[CONVO LOG] User: ${from} | Message: "${incomingMsg}" | State: ${session.state}`);
 
     try {
-        // Comando global para volver al menú principal
         if (normalizedInput === 'menu' && session.state !== 'AWAITING_START') {
             sendWelcomeMenu(twimlResponse);
             session.state = 'AWAITING_MAIN_MENU_SELECTION';
@@ -163,7 +162,7 @@ async function handleMainMenuSelection(selection, session, twimlResponse) {
     }
 }
 
-// --- Funciones del Flujo de Pedido (Lógica existente y corregida) ---
+// --- Funciones del Flujo de Pedido ---
 
 async function handleProductSearch(productName, session, twimlResponse) {
     const products = await appsheet.findProducts(productName);
@@ -242,11 +241,10 @@ async function handleFinalizeOrder(session, twimlResponse) {
         return;
     }
 
-    // Resumen final CORREGIDO para incluir el celular
     let finalSummary = `*¡Pedido registrado con éxito!* 🎉\n\n*Resumen de tu compra:*\n\n`;
     finalSummary += `*Cliente:* ${session.order.cliente}\n`;
     finalSummary += `*Dirección:* ${session.order.direccion}\n`;
-    finalSummary += `*Celular:* ${session.order.celular}\n\n`; // Línea del celular añadida
+    finalSummary += `*Celular:* ${session.order.celular}\n\n`;
     finalSummary += `*Productos:*\n`;
     session.order.items.forEach(item => {
         finalSummary += `- ${item.nombreProducto} (x${item.cantidadProducto}) = $${item.valor}\n`;

@@ -1,4 +1,4 @@
-// appsheet.js (Corregido para asegurar el guardado de todos los productos)
+// appsheet.js (Enfocado únicamente en la funcionalidad de pedidos)
 const axios = require('axios');
 
 // --- Configuración de AppSheet ---
@@ -42,7 +42,6 @@ async function saveOrder(orderData) {
 
     // 1. Guardar detalles del pedido (todos los productos)
     try {
-        // Mapea cada item del pedido al formato que AppSheet espera
         const detalleRows = orderData.items.map(item => ({
             "pedidoid": item.pedidoid,
             "fecha": new Date().toISOString(),
@@ -52,15 +51,16 @@ async function saveOrder(orderData) {
             "valor": item.valor
         }));
 
-        // Envía TODAS las filas de detalles en una sola petición
+        console.log(`[LOG APPSHEET] Intentando guardar ${detalleRows.length} items para el pedido ${orderData.pedidoid}`);
+
         await axios.post(
             `${APPSHEET_API_URL}/apps/${APP_ID}/tables/${TABLES.ORDER_DETAILS}/Action`,
-            { "Action": "Add", "Properties": {}, "Rows": detalleRows },
+            { "Action": "Add", "Properties": { "Locale": "es-US" }, "Rows": detalleRows },
             { headers: apiHeaders }
         );
-        console.log(`[LOG APPSHEET] Detalles del pedido ${orderData.pedidoid} guardados. (${detalleRows.length} items)`);
+        console.log(`[LOG APPSHEET] Detalles del pedido ${orderData.pedidoid} guardados.`);
     } catch (error) {
-        console.error(`[ERROR APPSHEET] Falla al guardar detalles. Tabla: ${TABLES.ORDER_DETAILS}.`, error.response ? error.response.data : error.message);
+        console.error(`[ERROR APPSHEET] Falla al guardar detalles. Tabla: ${TABLES.ORDER_DETAILS}.`, error.response ? JSON.stringify(error.response.data) : error.message);
         return false;
     }
 
@@ -76,12 +76,12 @@ async function saveOrder(orderData) {
         }];
         await axios.post(
             `${APPSHEET_API_URL}/apps/${APP_ID}/tables/${TABLES.ORDER_HEADER}/Action`,
-            { "Action": "Add", "Properties": {}, "Rows": encabezadoRow },
+            { "Action": "Add", "Properties": { "Locale": "es-US" }, "Rows": encabezadoRow },
             { headers: apiHeaders }
         );
         console.log(`[LOG APPSHEET] Encabezado del pedido ${orderData.pedidoid} guardado.`);
     } catch (error) {
-        console.error(`[ERROR APPSHEET] Falla al guardar encabezado. Tabla: ${TABLES.ORDER_HEADER}.`, error.response ? error.response.data : error.message);
+        console.error(`[ERROR APPSHEET] Falla al guardar encabezado. Tabla: ${TABLES.ORDER_HEADER}.`, error.response ? JSON.stringify(error.response.data) : error.message);
         return false;
     }
     
