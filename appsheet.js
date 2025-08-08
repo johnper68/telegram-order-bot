@@ -1,4 +1,4 @@
-// appsheet.js (Enfocado únicamente en la funcionalidad de pedidos)
+// appsheet.js (Corregido para asegurar el guardado de todos los productos)
 const axios = require('axios');
 
 // --- Configuración de AppSheet ---
@@ -21,6 +21,9 @@ const TABLES = {
     ORDER_HEADER: 'enc_pedido'
 };
 
+// Función para introducir una pequeña pausa
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
 async function findProducts(searchString) {
     if (!APP_ID || !ACCESS_KEY) return [];
     try {
@@ -40,29 +43,33 @@ async function findProducts(searchString) {
 async function saveOrder(orderData) {
     if (!APP_ID || !ACCESS_KEY) return false;
 
-    // 1. Guardar detalles del pedido (todos los productos)
-    try {
-        const detalleRows = orderData.items.map(item => ({
-            "pedidoid": item.pedidoid,
-            "fecha": new Date().toISOString(),
-            "nombreProducto": item.nombreProducto,
-            "cantidadProducto": item.cantidadProducto,
-            "valor_unit": item.valor_unit,
-            "valor": item.valor
-        }));
+    // 1. Guardar detalles del pedido (uno por uno para máxima fiabilidad)
+    for (const item of orderData.items) {
+        try {
+            const detalleRow = [{
+                "pedidoid": item.pedidoid,
+                "fecha": new Date().toISOString(),
+                "nombreProducto": item.nombreProducto,
+                "cantidadProducto": item.cantidadProducto,
+                "valor_unit": item.valor_unit,
+                "valor": item.valor
+            }];
 
-        console.log(`[LOG APPSHEET] Intentando guardar ${detalleRows.length} items para el pedido ${orderData.pedidoid}`);
-
-        await axios.post(
-            `${APPSHEET_API_URL}/apps/${APP_ID}/tables/${TABLES.ORDER_DETAILS}/Action`,
-            { "Action": "Add", "Properties": { "Locale": "es-US" }, "Rows": detalleRows },
-            { headers: apiHeaders }
-        );
-        console.log(`[LOG APPSHEET] Detalles del pedido ${orderData.pedidoid} guardados.`);
-    } catch (error) {
-        console.error(`[ERROR APPSHEET] Falla al guardar detalles. Tabla: ${TABLES.ORDER_DETAILS}.`, error.response ? JSON.stringify(error.response.data) : error.message);
-        return false;
+            console.log(`[LOG APPSHEET] Guardando item: ${item.nombreProducto}`);
+            await axios.post(
+                `${APPSHEET_API_URL}/apps/${APP_ID}/tables/${TABLES.ORDER_DETAILS}/Action`,
+                { "Action": "Add", "Properties": { "Locale": "es-US" }, "Rows": detalleRow },
+                { headers: apiHeaders }
+            );
+            // Pequeña pausa para no saturar la API de AppSheet
+            await delay(200); 
+        } catch (error) {
+            console.error(`[ERROR APPSHEET] Falla al guardar el item "${item.nombreProducto}".`, error.response ? JSON.stringify(error.response.data) : error.message);
+            // Si un item falla, detenemos el proceso para evitar pedidos incompletos.
+            return false;
+        }
     }
+    console.log(`[LOG APPSHEET] Todos los ${orderData.items.length} items del pedido ${orderData.pedidoid} han sido guardados.`);
 
     // 2. Guardar encabezado del pedido
     try {
@@ -81,11 +88,11 @@ async function saveOrder(orderData) {
         );
         console.log(`[LOG APPSHEET] Encabezado del pedido ${orderData.pedidoid} guardado.`);
     } catch (error) {
-        console.error(`[ERROR APPSHEET] Falla al guardar encabezado. Tabla: ${TABLES.ORDER_HEADER}.`, error.response ? JSON.stringify(error.response.data) : error.message);
+        console.error(`[ERROR APPSHEET] Falla al guardar encabezado.`, error.response ? JSON.stringify(error.response.data) : error.message);
         return false;
     }
     
-    console.log(`[LOG APPSHEET] ✅ Pedido ${orderData.pedidoid} guardado exitosamente.`);
+    console.log(`[LOG APPSHEET] ✅ Pedido ${orderData.pedidoid} completado y guardado exitosamente.`);
     return true;
 }
 

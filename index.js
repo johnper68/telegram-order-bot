@@ -241,6 +241,7 @@ async function handleFinalizeOrder(session, twimlResponse) {
         return;
     }
 
+    // Resumen final CORREGIDO para incluir el celular
     let finalSummary = `*¡Pedido registrado con éxito!* 🎉\n\n*Resumen de tu compra:*\n\n`;
     finalSummary += `*Cliente:* ${session.order.cliente}\n`;
     finalSummary += `*Dirección:* ${session.order.direccion}\n`;
