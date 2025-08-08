@@ -1,4 +1,4 @@
-// index.js
+// index.js para probar
 require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
