@@ -1,4 +1,4 @@
-// index.js (Restaurado a la funcionalidad de Pedidos y Asesor)
+// index.js (Corregido para manejar múltiples búsquedas)
 
 require('dotenv').config();
 const express = require('express');
@@ -90,9 +90,10 @@ app.post('/whatsapp', async (req, res) => {
                     twimlResponse.message(message);
                     session.state = 'AWAITING_PRODUCT_CHOICE';
                 } else if (normalizedInput === 'no') {
+                    // --- CORRECCIÓN 1: Limpiar la lista temporal cuando el usuario termina con ella ---
+                    session.tempProductMatches = [];
                     twimlResponse.message('Entendido. Escribe el nombre de otro producto que desees buscar, o escribe *FIN* para completar tu pedido.');
                     session.state = 'AWAITING_PRODUCT';
-                    session.tempProductMatches = [];
                 } else {
                     twimlResponse.message('Por favor, responde solo *SI* o *NO*.');
                 }
@@ -134,7 +135,6 @@ function initializeSession(from) {
     };
 }
 
-// Menú simplificado con solo 2 opciones
 function sendWelcomeMenu(twimlResponse) {
     const message = `¡Hola! 😄 Te damos una cordial bienvenida a *Occiquimicos*.\n\nEstoy aquí para ayudarte. ¿Qué te gustaría hacer hoy?\n\n*1.* 🛍️ Realizar un pedido\n*2.* 🧑‍💼 Hablar con un asesor\n\nPor favor, responde con el *número* de la opción que elijas.`;
     twimlResponse.message(message);
@@ -165,6 +165,9 @@ async function handleMainMenuSelection(selection, session, twimlResponse) {
 // --- Funciones del Flujo de Pedido ---
 
 async function handleProductSearch(productName, session, twimlResponse) {
+    // --- CORRECCIÓN 2: Asegurarse de que cada búsqueda sea nueva y limpia ---
+    session.tempProductMatches = [];
+
     const products = await appsheet.findProducts(productName);
     if (!products || products.length === 0) {
         twimlResponse.message(`No encontré productos que coincidan con "*${productName}*". Intenta con otro nombre o escribe *FIN* para cerrar el pedido.`);
@@ -241,7 +244,6 @@ async function handleFinalizeOrder(session, twimlResponse) {
         return;
     }
 
-    // Resumen final CORREGIDO para incluir el celular
     let finalSummary = `*¡Pedido registrado con éxito!* 🎉\n\n*Resumen de tu compra:*\n\n`;
     finalSummary += `*Cliente:* ${session.order.cliente}\n`;
     finalSummary += `*Dirección:* ${session.order.direccion}\n`;
