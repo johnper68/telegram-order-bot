@@ -1,4 +1,4 @@
-// appsheet.js (Corregido para asegurar el guardado de todos los productos)
+// appsheet.js (MODIFICADO para búsqueda sin tildes)
 const axios = require('axios');
 
 // --- Configuración de AppSheet ---
@@ -21,6 +21,19 @@ const TABLES = {
     ORDER_HEADER: 'enc_pedido'
 };
 
+/**
+ * Normaliza un texto: lo convierte a minúsculas y le quita las tildes.
+ * @param {string} str El texto a normalizar.
+ * @returns {string} El texto normalizado.
+ */
+function normalizeText(str) {
+    if (!str) return "";
+    return str
+        .normalize("NFD") // Separa las tildes de las letras (e.g., "á" -> "a" + "´")
+        .replace(/[\u0300-\u036f]/g, "") // Elimina los caracteres de tildes
+        .toLowerCase(); // Convierte todo a minúsculas
+}
+
 async function findProducts(searchString) {
     if (!APP_ID || !ACCESS_KEY) return [];
     try {
@@ -29,8 +42,17 @@ async function findProducts(searchString) {
             { "Action": "Find", "Properties": {}, "Rows": [] },
             { headers: apiHeaders }
         );
-        const lowerCaseSearch = searchString.toLowerCase();
-        return response.data.filter(p => p.nombreProducto && p.nombreProducto.toLowerCase().includes(lowerCaseSearch));
+
+        // ✅ **AQUÍ ESTÁ LA MAGIA**
+        // Normalizamos el término de búsqueda del usuario una sola vez.
+        const normalizedSearch = normalizeText(searchString);
+
+        // Filtramos los productos comparando sus nombres también normalizados.
+        return response.data.filter(p => {
+            const normalizedProductName = normalizeText(p.nombreProducto);
+            return normalizedProductName.includes(normalizedSearch);
+        });
+
     } catch (error) {
         console.error(`[ERROR APPSHEET] Falla en findProducts.`, error.response ? error.response.data : error.message);
         return [];
