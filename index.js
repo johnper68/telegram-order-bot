@@ -55,17 +55,17 @@ bot.on('message', async (msg) => {
                 break;
             case 'AWAITING_NAME':
                 session.order.cliente = incomingMsg;
-                bot.sendMessage(chatId, 'Gracias. Ahora, por favor, indícame tu *dirección de entrega*.', { parse_mode: 'Markdown' });
+                await bot.sendMessage(chatId, 'Gracias. Ahora, por favor, indícame tu *dirección de entrega*.', { parse_mode: 'Markdown' });
                 session.state = 'AWAITING_ADDRESS';
                 break;
             case 'AWAITING_ADDRESS':
                 session.order.direccion = incomingMsg;
-                bot.sendMessage(chatId, 'Perfecto. Por último, tu *número de celular*.', { parse_mode: 'Markdown' });
+                await bot.sendMessage(chatId, 'Perfecto. Por último, tu *número de celular*.', { parse_mode: 'Markdown' });
                 session.state = 'AWAITING_PHONE';
                 break;
             case 'AWAITING_PHONE':
                 session.order.celular = incomingMsg;
-                bot.sendMessage(chatId, '¡Datos guardados! \n\nAhora, dime ¿qué *producto* estás buscando?', { parse_mode: 'Markdown' });
+                await bot.sendMessage(chatId, '¡Datos guardados! \n\nAhora, dime ¿qué *producto* estás buscando?', { parse_mode: 'Markdown' });
                 session.state = 'AWAITING_PRODUCT';
                 break;
             case 'AWAITING_PRODUCT':
@@ -88,24 +88,24 @@ bot.on('message', async (msg) => {
                     session.tempProductMatches.forEach((p, index) => {
                         message += `*${index + 1}.* ${p.nombreProducto} - $${p.valor}\n`;
                     });
-                    bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
+                    await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
                     session.state = 'AWAITING_PRODUCT_CHOICE';
                 } else if (normalizedInput === 'no') {
                     session.tempProductMatches = [];
-                    bot.sendMessage(chatId, 'Entendido. Escribe el nombre de otro producto que desees buscar, o escribe *FIN* para completar tu pedido.', { parse_mode: 'Markdown' });
+                    await bot.sendMessage(chatId, 'Entendido. Escribe el nombre de otro producto que desees buscar, o escribe *FIN* para completar tu pedido.', { parse_mode: 'Markdown' });
                     session.state = 'AWAITING_PRODUCT';
                 } else {
-                    bot.sendMessage(chatId, 'Por favor, responde solo *SI* o *NO*.', { parse_mode: 'Markdown' });
+                    await bot.sendMessage(chatId, 'Por favor, responde solo *SI* o *NO*.', { parse_mode: 'Markdown' });
                 }
                 break;
             default:
-                bot.sendMessage(chatId, 'Parece que nos perdimos un poco. No te preocupes, empecemos de nuevo. Escribe /start para ver las opciones.');
+                await bot.sendMessage(chatId, 'Parece que nos perdimos un poco. No te preocupes, empecemos de nuevo. Escribe /start para ver las opciones.');
                 delete userSessions[chatId];
                 break;
         }
     } catch (error) {
         console.error('[FATAL ERROR] Error en el bot:', error);
-        bot.sendMessage(chatId, 'Lo siento, ocurrió un error inesperado. Por favor, intenta de nuevo en un momento.');
+        await bot.sendMessage(chatId, 'Lo siento, ocurrió un error inesperado. Por favor, intenta de nuevo en un momento.');
         delete userSessions[chatId];
     }
 });
@@ -142,13 +142,18 @@ async function handleMainMenuSelection(selection, session, chatId) {
             break;
     }
 }
+
+// --- CAMBIO IMPORTANTE AQUÍ ---
 async function handleProductSearch(productName, session, chatId) {
     session.tempProductMatches = [];
     const products = await appsheet.findProducts(productName);
+
     if (!products || products.length === 0) {
-        await bot.sendMessage(chatId, `No encontré productos que coincidan con "*${productName}*". Intenta con otro nombre o escribe *FIN* para cerrar el pedido.`, { parse_mode: 'Markdown' });
-        return;
+        // Se asegura de enviar el mensaje y no hacer nada más
+        await bot.sendMessage(chatId, `No encontré productos que coincidan con "*${productName}*".\n\nIntenta con otro nombre o escribe *FIN* para cerrar el pedido.`, { parse_mode: 'Markdown' });
+        return; 
     }
+
     if (products.length === 1) {
         session.tempSelectedItem = products[0];
         await bot.sendMessage(chatId, `Encontré: *${products[0].nombreProducto}* (Valor: $${products[0].valor}).\n\n¿Qué *cantidad* deseas pedir?`, { parse_mode: 'Markdown' });
@@ -161,6 +166,7 @@ async function handleProductSearch(productName, session, chatId) {
         session.state = 'AWAITING_PRODUCT_CHOICE';
     }
 }
+
 async function handleProductChoice(choice, session, chatId) {
     const choiceIndex = parseInt(choice, 10) - 1;
     if (session.tempProductMatches && session.tempProductMatches[choiceIndex]) {
