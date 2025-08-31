@@ -264,5 +264,3 @@ async function handleFinalizeOrder(session, chatId) {
 
 
 console.log('Bot de Telegram iniciado y esperando mensajes...');
-```
-
