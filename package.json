@@ -1,7 +1,7 @@
 {
-  "name": "telegram-order-bot",
+  "name": "telegram-order-bot-webservice",
   "version": "1.0.0",
-  "description": "Bot de pedidos para Telegram usando AppSheet.",
+  "description": "Bot de pedidos para Telegram usando AppSheet (versión Web Service).",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -11,6 +11,7 @@
   "dependencies": {
     "axios": "^1.7.2",
     "dotenv": "^16.4.5",
+    "express": "^4.19.2",
     "node-telegram-bot-api": "^0.66.0"
   },
   "engines": {
