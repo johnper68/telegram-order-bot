@@ -1,4 +1,4 @@
-// appsheet.js (MODIFICADO para búsqueda sin tildes y actualización de estado)
+// appsheet.js (MODIFICADO para búsqueda sin tildes)
 const axios = require('axios');
 
 // --- Configuración de AppSheet ---
@@ -43,7 +43,11 @@ async function findProducts(searchString) {
             { headers: apiHeaders }
         );
 
+        // ✅ **AQUÍ ESTÁ LA MAGIA**
+        // Normalizamos el término de búsqueda del usuario una sola vez.
         const normalizedSearch = normalizeText(searchString);
+
+        // Filtramos los productos comparando sus nombres también normalizados.
         return response.data.filter(p => {
             const normalizedProductName = normalizeText(p.nombreProducto);
             return normalizedProductName.includes(normalizedSearch);
@@ -58,7 +62,7 @@ async function findProducts(searchString) {
 async function saveOrder(orderData) {
     if (!APP_ID || !ACCESS_KEY) return false;
 
-    // 1. Guardar encabezado del pedido (con estado inicial)
+    // 1. Guardar encabezado del pedido (PRIMERO)
     try {
         const encabezadoRow = [{
             "pedidoid": orderData.pedidoid,
@@ -66,8 +70,7 @@ async function saveOrder(orderData) {
             "fecha": orderData.fecha,
             "cliente": orderData.cliente,
             "direccion": orderData.direccion,
-            "celular": orderData.celular,
-            "Estado": "Incompleto" // Estado inicial
+            "celular": orderData.celular
         }];
         await axios.post(
             `${APPSHEET_API_URL}/apps/${APP_ID}/tables/${TABLES.ORDER_HEADER}/Action`,
@@ -77,10 +80,10 @@ async function saveOrder(orderData) {
         console.log(`[LOG APPSHEET] Encabezado del pedido ${orderData.pedidoid} guardado.`);
     } catch (error) {
         console.error(`[ERROR APPSHEET] Falla al guardar encabezado. Tabla: ${TABLES.ORDER_HEADER}.`, error.response ? JSON.stringify(error.response.data) : error.message);
-        return false;
+        return false; // Si el encabezado falla, no continuamos.
     }
 
-    // 2. Guardar detalles del pedido
+    // 2. Guardar detalles del pedido (DESPUÉS)
     try {
         const detalleRows = orderData.items.map(item => ({
             "pedidoid": item.pedidoid,
@@ -90,6 +93,8 @@ async function saveOrder(orderData) {
             "valor_unit": item.valor_unit,
             "valor": item.valor
         }));
+
+        console.log(`[LOG APPSHEET] Intentando guardar ${detalleRows.length} items para el pedido ${orderData.pedidoid}`);
         
         await axios.post(
             `${APPSHEET_API_URL}/apps/${APP_ID}/tables/${TABLES.ORDER_DETAILS}/Action`,
@@ -99,27 +104,11 @@ async function saveOrder(orderData) {
         console.log(`[LOG APPSHEET] Detalles del pedido ${orderData.pedidoid} guardados.`);
     } catch (error) {
         console.error(`[ERROR APPSHEET] Falla al guardar detalles. Tabla: ${TABLES.ORDER_DETAILS}.`, error.response ? JSON.stringify(error.response.data) : error.message);
-        return false;
-    }
-
-    // 3. Actualizar estado del encabezado a "Completo" para disparar la automatización
-    try {
-        const updateRow = [{
-            "pedidoid": orderData.pedidoid,
-            "Estado": "Completo" // Estado final que activa el bot
-        }];
-        await axios.post(
-            `${APPSHEET_API_URL}/apps/${APP_ID}/tables/${TABLES.ORDER_HEADER}/Action`,
-            { "Action": "Edit", "Properties": { "Locale": "es-US" }, "Rows": updateRow },
-            { headers: apiHeaders }
-        );
-        console.log(`[LOG APPSHEET] Estado del pedido ${orderData.pedidoid} actualizado a Completo.`);
-    } catch (error) {
-        console.error(`[ERROR APPSHEET] Falla al actualizar el estado del pedido.`, error.response ? JSON.stringify(error.response.data) : error.message);
+        // Aunque los detalles fallen, el encabezado ya se creó. Podrías implementar una lógica para borrarlo si es necesario.
         return false;
     }
     
-    console.log(`[LOG APPSHEET] ✅ Pedido ${orderData.pedidoid} guardado y finalizado exitosamente.`);
+    console.log(`[LOG APPSHEET] ✅ Pedido ${orderData.pedidoid} guardado exitosamente.`);
     return true;
 }
 
