@@ -1,9 +1,8 @@
-/ index.js (Adaptado para Telegram y compatible con Render)
+// index.js (Adaptado para Telegram y Background Worker en Render)
 
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const appsheet = require('./appsheet');
-const http = require('http'); // Importamos el módulo http
 
 // --- Configuración del Bot ---
 const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -265,25 +264,5 @@ async function handleFinalizeOrder(session, chatId) {
 
 
 console.log('Bot de Telegram iniciado y esperando mensajes...');
-
-// --- Servidor HTTP Mínimo para Render ---
-const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.write('El bot de Telegram está activo.');
-    res.end();
-}).listen(PORT, () => {
-    console.log(`Servidor HTTP escuchando en el puerto ${PORT} para mantener el servicio activo.`);
-});
 ```
-
-### ¿Qué Debes Hacer?
-
-1.  **Reemplaza el contenido** de tu archivo `index.js` local con este nuevo código.
-2.  **Sube los cambios a GitHub** usando los comandos que ya conoces:
-    ```bash
-    git add .
-    git commit -m "fix: Añadir servidor HTTP para compatibilidad con Render"
-    git push
-    
 
