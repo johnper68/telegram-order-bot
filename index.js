@@ -110,9 +110,8 @@ bot.on('message', async (msg) => {
     }
 });
 
-// --- Funciones Auxiliares (sin cambios) ---
+// --- Funciones Auxiliares ---
 function initializeSession(chatId) {
-    // console.log(`[SESSION] Inicializando nueva sesión para ${chatId}`); // Comentado
     return {
         chatId: chatId, state: 'AWAITING_START', order: { pedidoid: Date.now().toString(), cliente: '', direccion: '', celular: '', items: [], total: 0, fecha: new Date().toISOString().split('T')[0] }, tempProductMatches: [], tempSelectedItem: null
     };
@@ -121,6 +120,8 @@ async function sendWelcomeMenu(chatId) {
     const message = `¡Hola! 😄 Te damos una cordial bienvenida a *Occiquimicos*.\n\nEstoy aquí para ayudarte. ¿Qué te gustaría hacer hoy?\n\n*1.* 🛍️ Realizar un pedido\n*2.* 🧑‍💼 Hablar con un asesor\n\nPor favor, responde con el *número* de la opción que elijas.`;
     await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 }
+
+// --- CAMBIO IMPORTANTE AQUÍ ---
 async function handleMainMenuSelection(selection, session, chatId) {
     switch (selection) {
         case '1':
@@ -128,10 +129,12 @@ async function handleMainMenuSelection(selection, session, chatId) {
             session.state = 'AWAITING_NAME';
             break;
         case '2':
-            const asesorNumber = process.env.TELEGRAM_ASESOR_LINK;
-            if (asesorNumber) {
-                const link = `https://t.me/${asesorNumber}`;
-                await bot.sendMessage(chatId, `Con gusto. Para hablar directamente con un asesor, por favor haz clic en el siguiente enlace:\n\n${link}\n\nSerás redirigido a su chat. ¡Que tengas un buen día!`);
+            // Ahora busca la variable del número de WhatsApp
+            const asesorWhatsAppNumber = process.env.WHATSAPP_ASESOR;
+            if (asesorWhatsAppNumber) {
+                // Construye el enlace de WhatsApp con un mensaje predeterminado
+                const link = `https://wa.me/${asesorWhatsAppNumber}?text=Hola,%20necesito%20ayuda%20con%20un%20pedido.`;
+                await bot.sendMessage(chatId, `Con gusto. Para hablar directamente con un asesor por WhatsApp, por favor haz clic en el siguiente enlace:\n\n${link}\n\nSerás redirigido a su chat. ¡Que tengas un buen día!`);
             } else {
                 await bot.sendMessage(chatId, 'Lo siento, no tenemos un asesor disponible en este momento. Por favor, intenta más tarde.');
             }
@@ -143,17 +146,15 @@ async function handleMainMenuSelection(selection, session, chatId) {
     }
 }
 
-// --- CAMBIO IMPORTANTE AQUÍ ---
+
+// --- Funciones del Flujo de Pedido (sin cambios) ---
 async function handleProductSearch(productName, session, chatId) {
     session.tempProductMatches = [];
     const products = await appsheet.findProducts(productName);
-
     if (!products || products.length === 0) {
-        // Se asegura de enviar el mensaje y no hacer nada más
         await bot.sendMessage(chatId, `No encontré productos que coincidan con "*${productName}*".\n\nIntenta con otro nombre o escribe *FIN* para cerrar el pedido.`, { parse_mode: 'Markdown' });
-        return; 
+        return;
     }
-
     if (products.length === 1) {
         session.tempSelectedItem = products[0];
         await bot.sendMessage(chatId, `Encontré: *${products[0].nombreProducto}* (Valor: $${products[0].valor}).\n\n¿Qué *cantidad* deseas pedir?`, { parse_mode: 'Markdown' });
@@ -166,7 +167,6 @@ async function handleProductSearch(productName, session, chatId) {
         session.state = 'AWAITING_PRODUCT_CHOICE';
     }
 }
-
 async function handleProductChoice(choice, session, chatId) {
     const choiceIndex = parseInt(choice, 10) - 1;
     if (session.tempProductMatches && session.tempProductMatches[choiceIndex]) {
@@ -222,12 +222,9 @@ async function handleFinalizeOrder(session, chatId) {
 // --- Servidor Web para compatibilidad con Render ---
 const app = express();
 const PORT = process.env.PORT || 3000;
-
 app.get('/', (req, res) => {
-    // Esta ruta es para que Render sepa que el servicio está vivo.
     res.send('El bot de Telegram está activo.');
 });
-
 app.listen(PORT, () => {
-    console.log(`Servidor web escuchando en el puerto ${PORT} para mantener el servicio activo.`);
+    // console.log(`Servidor web escuchando en el puerto ${PORT} para mantener el servicio activo.`);
 });
