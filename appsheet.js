@@ -1,4 +1,4 @@
-// appsheet.js (MODIFICADO para búsqueda sin tildes y actualización de estado)
+// appsheet.js
 const axios = require('axios');
 
 // --- Configuración de AppSheet ---
@@ -21,17 +21,12 @@ const TABLES = {
     ORDER_HEADER: 'enc_pedido'
 };
 
-/**
- * Normaliza un texto: lo convierte a minúsculas y le quita las tildes.
- * @param {string} str El texto a normalizar.
- * @returns {string} El texto normalizado.
- */
 function normalizeText(str) {
     if (!str) return "";
     return str
-        .normalize("NFD") // Separa las tildes de las letras (e.g., "á" -> "a" + "´")
-        .replace(/[\u0300-\u036f]/g, "") // Elimina los caracteres de tildes
-        .toLowerCase(); // Convierte todo a minúsculas
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
 }
 
 async function findProducts(searchString) {
@@ -58,7 +53,7 @@ async function findProducts(searchString) {
 async function saveOrder(orderData) {
     if (!APP_ID || !ACCESS_KEY) return false;
 
-    // 1. Guardar encabezado del pedido (con estado inicial)
+    // 1. Guardar encabezado
     try {
         const encabezadoRow = [{
             "pedidoid": orderData.pedidoid,
@@ -74,13 +69,13 @@ async function saveOrder(orderData) {
             { "Action": "Add", "Properties": { "Locale": "es-US" }, "Rows": encabezadoRow },
             { headers: apiHeaders }
         );
-        console.log(`[LOG APPSHEET] Encabezado del pedido ${orderData.pedidoid} guardado.`);
+        // console.log(`[LOG APPSHEET] Encabezado del pedido ${orderData.pedidoid} guardado.`); // Comentado
     } catch (error) {
         console.error(`[ERROR APPSHEET] Falla al guardar encabezado. Tabla: ${TABLES.ORDER_HEADER}.`, error.response ? JSON.stringify(error.response.data) : error.message);
         return false;
     }
 
-    // 2. Guardar detalles del pedido
+    // 2. Guardar detalles
     try {
         const detalleRows = orderData.items.map(item => ({
             "pedidoid": item.pedidoid,
@@ -90,37 +85,38 @@ async function saveOrder(orderData) {
             "valor_unit": item.valor_unit,
             "valor": item.valor
         }));
-        
+
         await axios.post(
             `${APPSHEET_API_URL}/apps/${APP_ID}/tables/${TABLES.ORDER_DETAILS}/Action`,
             { "Action": "Add", "Properties": { "Locale": "es-US" }, "Rows": detalleRows },
             { headers: apiHeaders }
         );
-        console.log(`[LOG APPSHEET] Detalles del pedido ${orderData.pedidoid} guardados.`);
+        // console.log(`[LOG APPSHEET] Detalles del pedido ${orderData.pedidoid} guardados.`); // Comentado
     } catch (error) {
         console.error(`[ERROR APPSHEET] Falla al guardar detalles. Tabla: ${TABLES.ORDER_DETAILS}.`, error.response ? JSON.stringify(error.response.data) : error.message);
         return false;
     }
-
-    // 3. Actualizar estado del encabezado a "Completo" para disparar la automatización
+    
+    // 3. Actualizar estado a "Completo"
     try {
         const updateRow = [{
             "pedidoid": orderData.pedidoid,
-            "Estado": "Completo" // Estado final que activa el bot
+            "Estado": "Completo"
         }];
         await axios.post(
             `${APPSHEET_API_URL}/apps/${APP_ID}/tables/${TABLES.ORDER_HEADER}/Action`,
             { "Action": "Edit", "Properties": { "Locale": "es-US" }, "Rows": updateRow },
             { headers: apiHeaders }
         );
-        console.log(`[LOG APPSHEET] Estado del pedido ${orderData.pedidoid} actualizado a Completo.`);
+        // console.log(`[LOG APPSHEET] Estado del pedido ${orderData.pedidoid} actualizado a Completo.`); // Comentado
     } catch (error) {
-        console.error(`[ERROR APPSHEET] Falla al actualizar el estado del pedido.`, error.response ? JSON.stringify(error.response.data) : error.message);
+        console.error(`[ERROR APPSHEET] Falla al actualizar estado. Tabla: ${TABLES.ORDER_HEADER}.`, error.response ? JSON.stringify(error.response.data) : error.message);
         return false;
     }
     
-    console.log(`[LOG APPSHEET] ✅ Pedido ${orderData.pedidoid} guardado y finalizado exitosamente.`);
+    console.log(`[LOG] Pedido ${orderData.pedidoid} guardado exitosamente.`); // Log simplificado
     return true;
 }
 
 module.exports = { findProducts, saveOrder };
+
