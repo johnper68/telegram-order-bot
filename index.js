@@ -1,4 +1,4 @@
-// index.js (Adaptado para Telegram y Render Web Service)
+// index.js (Versión Final Estable para Telegram y Render Web Service)
 
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
@@ -11,12 +11,9 @@ if (!token) {
     console.error("Error: No se ha definido el TELEGRAM_BOT_TOKEN en las variables de entorno.");
     process.exit(1);
 }
-// El bot se inicia con polling para que se ejecute constantemente
 const bot = new TelegramBot(token, { polling: true });
 
 const userSessions = {};
-
-console.log('Bot de Telegram iniciado y esperando mensajes...');
 
 // --- Lógica Principal del Bot ---
 bot.on('message', async (msg) => {
@@ -30,19 +27,11 @@ bot.on('message', async (msg) => {
     }
 
     const normalizedInput = incomingMsg.toLowerCase();
-    // Se comenta la siguiente línea para limpiar los logs
-    // console.log(`[CONVO LOG] User: ${chatId} | Message: "${incomingMsg}" | State: ${session.state}`);
 
     try {
-        if (normalizedInput === '/menu' && session.state !== 'AWAITING_START') {
-            await sendWelcomeMenu(chatId);
-            session.state = 'AWAITING_MAIN_MENU_SELECTION';
-            return;
-        }
-        
         if (normalizedInput === '/start') {
-             session = initializeSession(chatId);
-             userSessions[chatId] = session;
+            session = initializeSession(chatId);
+            userSessions[chatId] = session;
         }
 
         switch (session.state) {
@@ -110,6 +99,7 @@ bot.on('message', async (msg) => {
     }
 });
 
+
 // --- Funciones Auxiliares ---
 function initializeSession(chatId) {
     return {
@@ -121,7 +111,7 @@ async function sendWelcomeMenu(chatId) {
     await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 }
 
-// --- CAMBIO IMPORTANTE AQUÍ ---
+// --- LÓGICA REVERTIDA A TELEGRAM ---
 async function handleMainMenuSelection(selection, session, chatId) {
     switch (selection) {
         case '1':
@@ -129,12 +119,24 @@ async function handleMainMenuSelection(selection, session, chatId) {
             session.state = 'AWAITING_NAME';
             break;
         case '2':
-            // Ahora busca la variable del número de WhatsApp
-            const asesorWhatsAppNumber = process.env.WHATSAPP_ASESOR;
-            if (asesorWhatsAppNumber) {
-                // Construye el enlace de WhatsApp con un mensaje predeterminado
-                const link = `https://wa.me/${asesorWhatsAppNumber}?text=Hola,%20necesito%20ayuda%20con%20un%20pedido.`;
-                await bot.sendMessage(chatId, `Con gusto. Para hablar directamente con un asesor por WhatsApp, por favor haz clic en el siguiente enlace:\n\n${link}\n\nSerás redirigido a su chat. ¡Que tengas un buen día!`);
+            const asesorUsername = process.env.TELEGRAM_ASESOR_LINK;
+            if (asesorUsername) {
+                const link = `https://t.me/${asesorUsername}`;
+                const message = 'Con gusto. Para hablar directamente con un asesor, por favor haz clic en el siguiente botón:';
+                
+                await bot.sendMessage(chatId, message, {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                {
+                                    text: '💬 Abrir Chat con Asesor',
+                                    url: link
+                                }
+                            ]
+                        ]
+                    }
+                });
+
             } else {
                 await bot.sendMessage(chatId, 'Lo siento, no tenemos un asesor disponible en este momento. Por favor, intenta más tarde.');
             }
@@ -146,14 +148,13 @@ async function handleMainMenuSelection(selection, session, chatId) {
     }
 }
 
-
-// --- Funciones del Flujo de Pedido (sin cambios) ---
+// --- Funciones del Flujo de Pedido ---
 async function handleProductSearch(productName, session, chatId) {
     session.tempProductMatches = [];
     const products = await appsheet.findProducts(productName);
     if (!products || products.length === 0) {
         await bot.sendMessage(chatId, `No encontré productos que coincidan con "*${productName}*".\n\nIntenta con otro nombre o escribe *FIN* para cerrar el pedido.`, { parse_mode: 'Markdown' });
-        return;
+        return; 
     }
     if (products.length === 1) {
         session.tempSelectedItem = products[0];
@@ -217,14 +218,16 @@ async function handleFinalizeOrder(session, chatId) {
     finalSummary += `\n*TOTAL A PAGAR: $${session.order.total}*\n\n`;
     finalSummary += `Gracias por tu compra. En breve nos pondremos en contacto contigo para coordinar el pago y la entrega.`;
     await bot.sendMessage(chatId, finalSummary, { parse_mode: 'Markdown' });
+    delete userSessions[chatId];
 }
 
 // --- Servidor Web para compatibilidad con Render ---
 const app = express();
 const PORT = process.env.PORT || 3000;
+console.log('Bot de Telegram iniciado y esperando mensajes...');
 app.get('/', (req, res) => {
     res.send('El bot de Telegram está activo.');
 });
 app.listen(PORT, () => {
-    // console.log(`Servidor web escuchando en el puerto ${PORT} para mantener el servicio activo.`);
+    console.log(`Servidor web escuchando en el puerto ${PORT} para mantener el servicio activo.`);
 });
