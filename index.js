@@ -1,84 +1,86 @@
-// index.js (Corregido para manejar múltiples búsquedas)
-
 require('dotenv').config();
-const express = require('express');
-const bodyParser = require('body-parser');
-const { twiml } = require('twilio');
+const TelegramBot = require('node-telegram-bot-api');
 const appsheet = require('./appsheet');
 
-const app = express();
-app.use(bodyParser.urlencoded({ extended: false }));
+// --- Configuración del Bot ---
+const token = process.env.TELEGRAM_BOT_TOKEN;
+if (!token) {
+    console.error("[FATAL STARTUP ERROR] No se proporcionó el TELEGRAM_BOT_TOKEN en el archivo .env.");
+    process.exit(1);
+}
+const bot = new TelegramBot(token, { polling: true });
 
 const userSessions = {};
 
-app.post('/whatsapp', async (req, res) => {
-    const { MessagingResponse } = twiml;
-    const twimlResponse = new MessagingResponse();
-    
-    const incomingMsg = req.body.Body.trim();
-    const from = req.body.From;
+// --- Listener Principal de Mensajes ---
+bot.on('message', async (msg) => {
+    const chatId = msg.chat.id;
+    const incomingMsg = msg.text || '';
 
-    let session = userSessions[from];
+    let session = userSessions[chatId];
     if (!session) {
-        session = initializeSession(from);
-        userSessions[from] = session;
+        session = initializeSession(chatId);
+        userSessions[chatId] = session;
+    }
+    
+    // Ignorar mensajes que no son de texto
+    if (!msg.text) {
+        bot.sendMessage(chatId, "Por favor, envíame solo mensajes de texto.");
+        return;
     }
 
     const normalizedInput = incomingMsg.toLowerCase();
-    console.log(`[CONVO LOG] User: ${from} | Message: "${incomingMsg}" | State: ${session.state}`);
+    console.log(`[CONVO LOG] User: ${chatId} | Message: "${incomingMsg}" | State: ${session.state}`);
 
     try {
-        if (normalizedInput === 'menu' && session.state !== 'AWAITING_START') {
-            sendWelcomeMenu(twimlResponse);
+        if (normalizedInput === '/start' || (normalizedInput === 'menu' && session.state !== 'AWAITING_START')) {
+            sendWelcomeMenu(chatId);
             session.state = 'AWAITING_MAIN_MENU_SELECTION';
-            res.type('text/xml').send(twimlResponse.toString());
             return;
         }
 
         switch (session.state) {
             case 'AWAITING_START':
-                sendWelcomeMenu(twimlResponse);
+                sendWelcomeMenu(chatId);
                 session.state = 'AWAITING_MAIN_MENU_SELECTION';
                 break;
 
             case 'AWAITING_MAIN_MENU_SELECTION':
-                await handleMainMenuSelection(normalizedInput, session, twimlResponse);
+                await handleMainMenuSelection(normalizedInput, session, chatId);
                 break;
 
-            // --- Flujo de Pedido ---
             case 'AWAITING_NAME':
                 session.order.cliente = incomingMsg;
-                twimlResponse.message('Gracias. Ahora, por favor, indícame tu *dirección de entrega*.');
+                bot.sendMessage(chatId, 'Gracias. Ahora, por favor, indícame tu *dirección de entrega*.', { parse_mode: 'Markdown' });
                 session.state = 'AWAITING_ADDRESS';
                 break;
 
             case 'AWAITING_ADDRESS':
                 session.order.direccion = incomingMsg;
-                twimlResponse.message('Perfecto. Por último, tu *número de celular*.');
+                bot.sendMessage(chatId, 'Perfecto. Por último, tu *número de celular*.', { parse_mode: 'Markdown' });
                 session.state = 'AWAITING_PHONE';
                 break;
 
             case 'AWAITING_PHONE':
                 session.order.celular = incomingMsg;
-                twimlResponse.message('¡Datos guardados! \n\nAhora, dime ¿qué *producto* estás buscando?');
+                bot.sendMessage(chatId, '¡Datos guardados! \n\nAhora, dime ¿qué *producto* estás buscando?', { parse_mode: 'Markdown' });
                 session.state = 'AWAITING_PRODUCT';
                 break;
 
             case 'AWAITING_PRODUCT':
                 if (normalizedInput === 'fin' || normalizedInput === 'finalizar') {
-                    await handleFinalizeOrder(session, twimlResponse);
-                    delete userSessions[from];
+                    await handleFinalizeOrder(session, chatId);
                 } else {
-                    await handleProductSearch(incomingMsg, session, twimlResponse);
+                    await handleProductSearch(incomingMsg, session, chatId);
                 }
                 break;
             
             case 'AWAITING_PRODUCT_CHOICE':
-                await handleProductChoice(incomingMsg, session, twimlResponse);
+                await handleProductChoice(incomingMsg, session, chatId);
                 break;
 
             case 'AWAITING_QUANTITY':
-                await handleQuantity(incomingMsg, session, twimlResponse);
+                await handleQuantity(incomingMsg, session, chatId);
                 break;
 
             case 'AWAITING_ANOTHER_FROM_LIST':
@@ -87,39 +89,36 @@ app.post('/whatsapp', async (req, res) => {
                     session.tempProductMatches.forEach((p, index) => {
                         message += `*${index + 1}.* ${p.nombreProducto} - $${p.valor}\n`;
                     });
-                    twimlResponse.message(message);
+                    bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
                     session.state = 'AWAITING_PRODUCT_CHOICE';
                 } else if (normalizedInput === 'no') {
-                    // --- CORRECCIÓN 1: Limpiar la lista temporal cuando el usuario termina con ella ---
                     session.tempProductMatches = [];
-                    twimlResponse.message('Entendido. Escribe el nombre de otro producto que desees buscar, o escribe *FIN* para completar tu pedido.');
+                    bot.sendMessage(chatId, 'Entendido. Escribe el nombre de otro producto que desees buscar, o escribe *FIN* para completar tu pedido.', { parse_mode: 'Markdown' });
                     session.state = 'AWAITING_PRODUCT';
                 } else {
-                    twimlResponse.message('Por favor, responde solo *SI* o *NO*.');
+                    bot.sendMessage(chatId, 'Por favor, responde solo *SI* o *NO*.');
                 }
                 break;
 
             default:
-                twimlResponse.message('Parece que nos perdimos un poco. No te preocupes, empecemos de nuevo. Escribe *Hola* para ver las opciones.');
-                delete userSessions[from];
+                bot.sendMessage(chatId, 'Parece que nos perdimos un poco. No te preocupes, empecemos de nuevo. Escribe /start para ver las opciones.');
+                delete userSessions[chatId];
                 break;
         }
     } catch (error) {
-        console.error('[FATAL ERROR] Error en el webhook:', error);
-        twimlResponse.message('Lo siento, ocurrió un error inesperado. Por favor, intenta de nuevo en un momento.');
-        delete userSessions[from];
+        console.error('[FATAL ERROR] Error en el bot:', error);
+        bot.sendMessage(chatId, 'Lo siento, ocurrió un error inesperado. Por favor, intenta de nuevo en un momento.');
+        delete userSessions[chatId];
     }
-    
-    res.type('text/xml').send(twimlResponse.toString());
 });
 
 
 // --- Funciones Auxiliares ---
 
-function initializeSession(from) {
-    console.log(`[SESSION] Inicializando nueva sesión para ${from}`);
+function initializeSession(chatId) {
+    console.log(`[SESSION] Inicializando nueva sesión para ${chatId}`);
     return {
-        from: from,
+        chatId: chatId,
         state: 'AWAITING_START',
         order: {
             pedidoid: Date.now().toString(),
@@ -135,47 +134,44 @@ function initializeSession(from) {
     };
 }
 
-function sendWelcomeMenu(twimlResponse) {
+function sendWelcomeMenu(chatId) {
     const message = `¡Hola! 😄 Te damos una cordial bienvenida a *Occiquimicos*.\n\nEstoy aquí para ayudarte. ¿Qué te gustaría hacer hoy?\n\n*1.* 🛍️ Realizar un pedido\n*2.* 🧑‍💼 Hablar con un asesor\n\nPor favor, responde con el *número* de la opción que elijas.`;
-    twimlResponse.message(message);
+    bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 }
 
-async function handleMainMenuSelection(selection, session, twimlResponse) {
+async function handleMainMenuSelection(selection, session, chatId) {
     switch (selection) {
         case '1':
-            twimlResponse.message('¡Excelente! Iniciemos con tu pedido. Para comenzar, por favor, dime tu *nombre completo*.');
+            bot.sendMessage(chatId, '¡Excelente! Iniciemos con tu pedido. Para comenzar, por favor, dime tu *nombre completo*.', { parse_mode: 'Markdown' });
             session.state = 'AWAITING_NAME';
             break;
         case '2':
-            const asesorNumber = process.env.WHATSAPP_ASESOR;
-            if (asesorNumber) {
-                const link = `https://wa.me/${asesorNumber}?text=Hola,%20necesito%20ayuda.`;
-                twimlResponse.message(`Con gusto. Para hablar directamente con un asesor, por favor haz clic en el siguiente enlace:\n\n${link}\n\nSerás redirigido a su chat. ¡Que tengas un buen día!`);
+            const asesorUsername = process.env.TELEGRAM_ASESOR_USERNAME;
+            if (asesorUsername) {
+                const link = `https://t.me/${asesorUsername}`;
+                bot.sendMessage(chatId, `Con gusto. Para hablar directamente con un asesor, por favor haz clic en el siguiente enlace:\n\n${link}\n\nSerás redirigido a su chat. ¡Que tengas un buen día!`);
             } else {
-                twimlResponse.message('Lo siento, no tenemos un asesor disponible en este momento. Por favor, intenta más tarde.');
+                bot.sendMessage(chatId, 'Lo siento, no tenemos un asesor disponible en este momento. Por favor, intenta más tarde.');
             }
-            delete userSessions[session.from];
+            delete userSessions[chatId];
             break;
         default:
-            twimlResponse.message('Opción no válida. Por favor, elige un número del *1 al 2*.');
+            bot.sendMessage(chatId, 'Opción no válida. Por favor, elige un número del *1 al 2*.', { parse_mode: 'Markdown' });
             break;
     }
 }
 
-// --- Funciones del Flujo de Pedido ---
-
-async function handleProductSearch(productName, session, twimlResponse) {
-    // --- CORRECCIÓN 2: Asegurarse de que cada búsqueda sea nueva y limpia ---
+async function handleProductSearch(productName, session, chatId) {
     session.tempProductMatches = [];
-
     const products = await appsheet.findProducts(productName);
+
     if (!products || products.length === 0) {
-        twimlResponse.message(`No encontré productos que coincidan con "*${productName}*". Intenta con otro nombre o escribe *FIN* para cerrar el pedido.`);
+        bot.sendMessage(chatId, `No encontré productos que coincidan con "*${productName}*". Intenta con otro nombre o escribe *FIN* para cerrar el pedido.`, { parse_mode: 'Markdown' });
         return;
     }
     if (products.length === 1) {
         session.tempSelectedItem = products[0];
-        twimlResponse.message(`Encontré: *${products[0].nombreProducto}* (Valor: $${products[0].valor}).\n\n¿Qué *cantidad* deseas pedir?`);
+        bot.sendMessage(chatId, `Encontré: *${products[0].nombreProducto}* (Valor: $${products[0].valor}).\n\n¿Qué *cantidad* deseas pedir?`, { parse_mode: 'Markdown' });
         session.state = 'AWAITING_QUANTITY';
     } else {
         session.tempProductMatches = products;
@@ -183,26 +179,26 @@ async function handleProductSearch(productName, session, twimlResponse) {
         products.forEach((p, index) => {
             message += `*${index + 1}.* ${p.nombreProducto} - $${p.valor}\n`;
         });
-        twimlResponse.message(message);
+        bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
         session.state = 'AWAITING_PRODUCT_CHOICE';
     }
 }
 
-async function handleProductChoice(choice, session, twimlResponse) {
+async function handleProductChoice(choice, session, chatId) {
     const choiceIndex = parseInt(choice, 10) - 1;
     if (session.tempProductMatches && session.tempProductMatches[choiceIndex]) {
         session.tempSelectedItem = session.tempProductMatches[choiceIndex];
-        twimlResponse.message(`Has elegido: *${session.tempSelectedItem.nombreProducto}*. \n\nAhora, dime ¿qué *cantidad* deseas?`);
+        bot.sendMessage(chatId, `Has elegido: *${session.tempSelectedItem.nombreProducto}*. \n\nAhora, dime ¿qué *cantidad* deseas?`, { parse_mode: 'Markdown' });
         session.state = 'AWAITING_QUANTITY';
     } else {
-        twimlResponse.message('Selección no válida. Por favor, elige un número de la lista que te mostré.');
+        bot.sendMessage(chatId, 'Selección no válida. Por favor, elige un número de la lista que te mostré.');
     }
 }
 
-async function handleQuantity(quantityStr, session, twimlResponse) {
+async function handleQuantity(quantityStr, session, chatId) {
     const quantity = parseInt(quantityStr, 10);
     if (isNaN(quantity) || quantity <= 0) {
-        twimlResponse.message('Por favor, introduce una cantidad válida (un número mayor que 0).');
+        bot.sendMessage(chatId, 'Por favor, introduce una cantidad válida (un número mayor que 0).');
         return;
     }
     const product = session.tempSelectedItem;
@@ -227,20 +223,21 @@ async function handleQuantity(quantityStr, session, twimlResponse) {
         session.state = 'AWAITING_PRODUCT';
     }
     
-    twimlResponse.message(summary);
+    bot.sendMessage(chatId, summary, { parse_mode: 'Markdown' });
     session.tempSelectedItem = null;
 }
 
-async function handleFinalizeOrder(session, twimlResponse) {
+async function handleFinalizeOrder(session, chatId) {
     if (session.order.items.length === 0) {
-        twimlResponse.message('No has añadido ningún producto. Tu pedido ha sido cancelado. Escribe *Hola* para empezar de nuevo.');
+        bot.sendMessage(chatId, 'No has añadido ningún producto. Tu pedido ha sido cancelado. Escribe /start para empezar de nuevo.');
+        delete userSessions[chatId];
         return;
     }
     
     const success = await appsheet.saveOrder(session.order);
-
     if (!success) {
-        twimlResponse.message('Hubo un problema al registrar tu pedido. Por favor, contacta a un asesor.');
+        bot.sendMessage(chatId, 'Hubo un problema al registrar tu pedido. Por favor, contacta a un asesor.');
+        delete userSessions[chatId];
         return;
     }
 
@@ -255,11 +252,8 @@ async function handleFinalizeOrder(session, twimlResponse) {
     finalSummary += `\n*TOTAL A PAGAR: $${session.order.total}*\n\n`;
     finalSummary += `Gracias por tu compra. En breve nos pondremos en contacto contigo para coordinar el pago y la entrega.`;
     
-    twimlResponse.message(finalSummary);
+    bot.sendMessage(chatId, finalSummary, { parse_mode: 'Markdown' });
+    delete userSessions[chatId];
 }
 
-// --- Iniciar el Servidor ---
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Servidor escuchando en el puerto ${PORT}`);
-});
+console.log('Bot de Telegram iniciado y esperando mensajes...');
